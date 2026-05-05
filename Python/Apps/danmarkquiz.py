@@ -5,7 +5,7 @@ import streamlit as st
 # Vi bruger en 'dictionary' for at knytte point sammen med bynavnet.
 # Du kan selvfølgelig altid rette pointene til!
 cities_data = {
-    "Aarhus": 10, "Aalborg": 10, "Odense": 10, "Esbjerg": 10, 
+    "Aarhus": 10, "Aalborg": 10, "HCA": 10, "Esbjerg": 10, 
     "Randers": 20, "Kolding": 20, "Horsens": 20, "Herning": 20, "Silkeborg": 20, "Fredericia": 20, "Roskilde": 20, "Amager": 20, "Lyngby": 20,
     "Holstebro": 30, "Sønderborg": 30, "Køge": 30, "Holbæk": 30, "Slagelse": 30, "Hillerød": 30, "Svendborg": 30, "Næstved": 30,
     "Hjørring": 40, "Frederikshavn": 40, "Haderslev": 40, "Skive": 40, "Viborg": 40, "Frederikssund": 40,
