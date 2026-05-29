@@ -1,3 +1,11 @@
-#Hej dette er en test
+# Hej dette er en test
 
 **bliver dette med fed??**
+
+* liste?
+* også list?
+
+1. And you can also create ordered lists
+2. by using numbers
+3. and listing new items in the lists 
+4. on their own lines
