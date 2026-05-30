@@ -100,7 +100,9 @@ klasse_navne <- c("ur", "ikke-ur")
 hovedmappe_sti <- "C:/Users/marti/Documents/Git/EK/2. sem/Deep Learning og NLP/Billedegenkendelse/billeder/"
 ```
 
-**Generatoren gør overordnet tre ting:**
+**Generatoren**
+
+Gør overordnet tre ting:
 
 - Skalerer alle værdier individuelt ved at dividere med 255 som er
   maksværdien i RGB-farveskalen. Dette gør modellen hurtigere da
@@ -125,6 +127,18 @@ datagen <- image_data_generator(
 
 **PUMPE 1: Træningsdata (80% af billederne)**
 
+- Her “pumpes” billederne ind fra den specificerede sti/directory fra
+  PC.
+- generatoren som blev defineret ovenfor behandler i pumpen alle
+  billeder.
+- Størrelsen på billederne bliver komprimeret til 75 x 100.
+- Farvede billeder gøres sorthvide, for at minimere kompleksitet,
+  behandlingstid og for at skærpe modellens præcision
+- Der defineres at der er to klasser som der skelnes imellem og at det
+  tager udgangspunkt i variablen “klasse_navne”
+- Sparse betyder at resultatet præsenteres som 0 eller 1, selvom vi godt
+  ved at det er ur vs. ikke-ur
+
 ``` r
 traenings_pumpe <- flow_images_from_directory(
   directory = hovedmappe_sti,
@@ -134,13 +148,15 @@ traenings_pumpe <- flow_images_from_directory(
   classes = klasse_navne,   
   class_mode = "sparse",    
   batch_size = 2,
-  subset = "training"       # NYT: Bed den om kun at tage trænings-delen
+  subset = "training"
 )
 ```
 
+**PUMPE 2: Valideringsdata (De resterende 20% af billederne)** -
+Valideringsbillederne kommer igennem samme type pumpe som
+træningsbillederne
+
 ``` r
-# PUMPE 2: Valideringsdata (De resterende 20% af billederne)
-# (Bemærk: Modellen må IKKE øve sig på disse, kun testes på dem)
 validerings_pumpe <- flow_images_from_directory(
   directory = hovedmappe_sti,
   generator = datagen,
@@ -149,8 +165,224 @@ validerings_pumpe <- flow_images_from_directory(
   classes = klasse_navne,   
   class_mode = "sparse",    
   batch_size = 2,
-  subset = "validation"     # NYT: Bed den om kun at tage validerings-delen
+  subset = "validation"
 )
 ```
 
+**Modellen bygges**
+
+- Modellen betår her af to Convolutional lag.
+
+- I det første lag kigger modellen på 32 mønstre af 3 x 3 pixels.
+
+- I max_pooling “halveres” billedet ved kun at beholde de vigtiste
+  karakteristiska <br> videre til næste lag.
+
+- I andet lag kigger modellen nu på 64 mønstre. Da datamængden er
+  skrumpet har vi nu overskud <br> til at kunne kigge på flere møsntre.
+
+- Billedet krympes igen
+
+- Flatten skaber en lang streng af tal istedet for en matrix.
+
+- Dropout rate 50% slukker for halvdelen af modellens hjerneceller, så
+  er tvunget til at tænke <br> hårdere så den ikke overfitter/lærer
+  pixels udenad, men istedet generelle mønstre.
+
+- layer_dense kobler først mønstrene sammen, hvor 64 er antallet af
+  neuroner som arbejder. <br> layer_dense er så til sidst tvunget til at
+  tage en beslutning om det er et ur eller ej, hvor <br> det bliver
+  præsenteret som en sandsynlighed for begge udfald.
+
+``` r
+model <- keras_model_sequential() %>%
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu", input_shape = c(75, 100, 1)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_flatten() %>%
+  layer_dropout(rate = 0.5) %>% 
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = 2, activation = "softmax")
+```
+
+**Kompiler og træn**
+
+- Stop hvis validerings-accuracy (“val_accuracy”) ikke bliver bedre i 10
+  runder og sænker farten hvis den sidder fast
+- (Vi lader R udregne steps_per_epoch automatisk for at undgå fejl)
+
+``` r
+model %>% compile(
+  optimizer = optimizer_adam(learning_rate = 0.0001),
+  loss = "sparse_categorical_crossentropy",
+  metrics = "accuracy"
+)
+```
+
+- validering
+
+``` r
+mine_callbacks <- list(
+  callback_early_stopping(monitor = "val_accuracy", patience = 10, restore_best_weights = TRUE),
+  callback_reduce_lr_on_plateau(monitor = "val_accuracy", factor = 0.5, patience = 4)
+)
+```
+
+- kører 50 gange hvis den ikke bliver stoppet.
+- Vi fodrer den med validerings_pumpen, så den kan dobbelttjekke sit
+  arbejde
+- plotter
+
+``` r
+history <- model %>% fit(
+  traenings_pumpe,
+  steps_per_epoch = traenings_pumpe$n / traenings_pumpe$batch_size,   
+  epochs = 50,
+  validation_data = validerings_pumpe,
+  validation_steps = validerings_pumpe$n / validerings_pumpe$batch_size,
+  callbacks = mine_callbacks
+)
+
+plot(history)
+```
+
+**Test på nyt/eget billede:**
+
+``` r
+test_billede <- "test2" 
+
+img_test <- image_load(paste0(hovedmappe_sti, test_billede, ".jpg"), 
+                       target_size = c(75, 100), 
+                       color_mode = "grayscale")
+img_test_array <- image_to_array(img_test) / 255
+billede_til_model <- array_reshape(img_test_array, c(1, 75, 100, 1))
+
+forudsigelse <- model %>% predict(billede_til_model)
+
+par(mfrow=c(1,2)) 
+plot(as.raster(img_test_array[,,1]), main = paste0("Billede: ", test_billede, ".jpg"))
+
+barplot(
+  as.numeric(forudsigelse), 
+  names.arg = klasse_navne, 
+  las = 1,                 
+  col = "lightgreen", 
+  main = "Modellens gæt",
+  ylab = "Sandsynlighed",
+  ylim = c(0, 1)
+)
+
+par(mfrow=c(1,1))
+```
+
 ## Algoritme: Kat vs. hund
+
+``` r
+library(keras)
+library(tensorflow)
+
+klasse_navne <- c("kat", "hund")
+
+# -------------------------------------------------------------------
+# 1. HENT OG FILTRÉR DATA (Eksamens-magien!)
+# -------------------------------------------------------------------
+cifar <- dataset_cifar10()
+
+# Find alle de steder, hvor billedet enten er en kat (3) eller hund (5)
+train_idx <- which(cifar$train$y == 3 | cifar$train$y == 5)
+test_idx <- which(cifar$test$y == 3 | cifar$test$y == 5)
+
+# Træk kun de billeder og facitter ud (og divider pixels med 255)
+x_train <- cifar$train$x[train_idx, , , ] / 255
+y_train_cifar <- cifar$train$y[train_idx]
+
+x_test <- cifar$test$x[test_idx, , , ] / 255
+y_test_cifar <- cifar$test$y[test_idx]
+
+# Lav vores eget facit: Hvis det var en 3'er (kat), så giv den 0. Ellers giv den 1 (hund).
+y_train <- ifelse(y_train_cifar == 3, 0, 1)
+y_test <- ifelse(y_test_cifar == 3, 0, 1)
+
+
+# -------------------------------------------------------------------
+# 2. BYG MODELLEN
+# -------------------------------------------------------------------
+model <- keras_model_sequential() %>%
+  
+  # CIFAR-10 billeder er altid 32x32 pixels i farver (3)
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu", 
+                input_shape = c(32, 32, 3)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  
+  layer_flatten() %>%
+  layer_dropout(rate = 0.5) %>% 
+  
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = 2, activation = "softmax")
+
+
+# -------------------------------------------------------------------
+# 3. KOMPILÉR OG TRÆN
+# -------------------------------------------------------------------
+model %>% compile(
+  optimizer = "adam", # Vi kan bruge standard Adam nu, fordi vi har masser af data!
+  loss = "sparse_categorical_crossentropy",
+  metrics = "accuracy"
+)
+
+# Træn direkte på vores x_train og brug x_test som validering!
+history <- model %>% fit(
+  x_train, y_train,
+  epochs = 15,          
+  batch_size = 64,      # Den kigger nu på 64 billeder ad gangen (stor forbedring!)
+  validation_data = list(x_test, y_test)
+)
+
+# Se de endelig (og rolige) grafer!
+plot(history)
+
+
+# -------------------------------------------------------------------
+# 4. TEST PÅ ET TILFÆLDIGT BILLEDE FRA TEST-SÆTTET
+# -------------------------------------------------------------------
+# Vælg et tilfældigt billede (fx nummer 42)
+test_index <- 42
+test_billede <- x_test[test_index, , , ]
+sandt_facit <- y_test[test_index] 
+
+
+
+###############
+test_billede <- "kat" #test med eget billede
+
+img_test <- image_load(paste0(hovedmappe_sti, test_billede, ".jpg"), 
+                       target_size = c(32, 32))
+img_test_array <- image_to_array(img_test) / 255
+################
+
+# Gør klar til Keras (batch af 1)
+billede_til_model <- array_reshape(img_test, c(1, 32, 32, 3))
+
+# Gæt!
+forudsigelse <- model %>% predict(billede_til_model)
+
+# Vis plot
+par(mfrow=c(1,2))
+# as.raster virker perfekt her, fordi x_test er formateret rigtigt!
+plot(as.raster(img_test_array), main = paste("Sandt facit:", klasse_navne[sandt_facit + 1]))
+
+barplot(
+  as.numeric(forudsigelse), 
+  names.arg = klasse_navne, 
+  las = 1,                 
+  col = "lightblue", 
+  main = "Modellens gæt",
+  ylab = "Sandsynlighed",
+  ylim = c(0, 1)
+)
+par(mfrow=c(1,1))
+```
