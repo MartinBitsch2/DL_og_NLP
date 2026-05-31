@@ -97,7 +97,7 @@ library(keras)
 library(tensorflow)
 
 klasse_navne <- c("ur", "ikke-ur")
-hovedmappe_sti <- "C:/Users/marti/Documents/Git/EK/2. sem/Deep Learning og NLP/Billedegenkendelse/billeder/"
+hovedmappe_sti <- "C:/Users/marti/Documents/Git/EK/2. sem/Deep Learning og NLP/DL_og_NLP_git/Eksamensscripts/billeder/"
 ```
 
 **Generatoren**
@@ -220,7 +220,8 @@ model %>% compile(
 )
 ```
 
-- validering
+- Validering. Hvis accuracy ikke er blevet bedre gennem 10 itterationer,
+  så stopper træningen.
 
 ``` r
 mine_callbacks <- list(
@@ -281,6 +282,9 @@ par(mfrow=c(1,1))
 ``` r
 library(keras)
 library(tensorflow)
+library(imager)
+
+hovedmappe_sti <- "C:\\Users\\marti\\Documents\\Git\\EK\\2. sem\\Deep Learning og NLP\\DL_og_NLP_git\\Eksamensscripts\\billeder\\"
 
 klasse_navne <- c("kat", "hund")
 
@@ -362,7 +366,6 @@ test_billede <- "kat" #test med eget billede
 img_test <- image_load(paste0(hovedmappe_sti, test_billede, ".jpg"), 
                        target_size = c(32, 32))
 img_test_array <- image_to_array(img_test) / 255
-################
 
 # Gør klar til Keras (batch af 1)
 billede_til_model <- array_reshape(img_test, c(1, 32, 32, 3))
@@ -385,4 +388,80 @@ barplot(
   ylim = c(0, 1)
 )
 par(mfrow=c(1,1))
+```
+
+# Pixeludvælgelse
+
+Her kan vi vælge et billede og lave pixelanalyse samt lave clustering på
+gråtoneversionen af billedet (gøre RGB til en værsdi og derefter
+clustre)
+
+``` r
+library(imager)
+library(factoextra)
+library(keras)
+library(reticulate)
+library(tensorflow)
+
+
+hovedmappe_sti <- "C:/Users/marti/Documents/Git/EK/2. sem/Deep Learning og NLP/DL_og_NLP_git/Eksamensscripts/billeder/"
+
+billeder_fra_folder <- list.files(paste0(hovedmappe_sti, "ikke-ur"), 
+                    pattern = "\\.(jpg|png)$", 
+                    full.names = TRUE)
+```
+
+**Hvilket billede vi vil kigge på**
+
+``` r
+print(billeder_fra_folder)
+nr <- 3
+```
+
+**Billedet**
+
+``` r
+billede <- load.image(billeder_fra_folder[nr])
+billede1 <- matrix(billede[,,1,2], nrow=nrow(billede), ncol=ncol(billede))
+
+dim(billede)
+plot(billede)
+```
+
+**Loop** Udregn gråtoner for hele billedet på én gang. Billedet bliver
+derefter fladet ud til en vektor, som kmeans kræver i næste step.
+
+``` r
+# Jeg går ud fra, at ,1 ,2 og ,3 er RGB-kanalerne
+grayscale_matrix <- (billede[,,1,1]*255 + 
+                         billede[,,1,2]*255 + 
+                         billede[,,1,3]*255) / 3
+  
+pixel_vektor <- as.vector(grayscale_matrix)
+```
+
+**Clustering**
+
+K=antal klynger. Efter K-means “samles” billedet igen, og af en eller
+anden grund er der sket noget med billedet så det skal spejlvendes.
+Dette gøres i loopet. Hvis billedets dimensioner ser forkerte ud, så
+prøv at åbne det op i en anden fane og just højde/bredde.
+
+``` r
+k <- 2
+
+set.seed(123) 
+klynger <- kmeans(pixel_vektor, centers = k)
+
+klynge_matrix <- matrix(klynger$cluster, 
+                        nrow = nrow(billede), 
+                        ncol = ncol(billede))
+
+clustered_matrix <- matrix(nrow = nrow(klynge_matrix), ncol = 0)
+for(i in ncol(klynge_matrix):1){
+  clustered_matrix <- cbind(clustered_matrix, klynge_matrix[,i])
+}
+
+
+image(clustered_matrix, col = rainbow(k), axes = FALSE, main = "Clustered Billede")
 ```
