@@ -63,7 +63,8 @@ library(reticulate)
 ```
 
 Indsæt din egen sti. Bare husk at det skal være pythonversionen som
-ligger i det virtuelle miljø “llms-course”:
+ligger i det virtuelle miljø “llms-course”.
+Deruover skal Python-interpreter også vælges fra indstillinger i R: tools -> global options -> Python -> select (intepreter) -> conda environments -> llms-course:
 
 ``` r
 use_python("C:\\Users\\marti\\anaconda3\\envs\\llms-course\\python.exe", required = TRUE)
