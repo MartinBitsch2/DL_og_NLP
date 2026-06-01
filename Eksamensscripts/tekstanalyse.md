@@ -1,6 +1,38 @@
 Tekstanalyse
 ================
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Load text:
 
 ## API-kald fra dansketaler.dk
@@ -75,6 +107,7 @@ library(topicmodels)
 library(ggplot2)
 library(dplyr)
 library(quanteda)
+library(tm)
 
 madkatpdf <- data.frame()
 for(i in 1:length(pdf)){
@@ -85,25 +118,100 @@ madkatpdf <- rbind(madkatpdf, temp)
 
 **Wordcount**
 
+- Tæller antallet af hvert ord i hvert dokument. Dette bruges i DTM
+- Udregner hvor stor en procentdel ordet udgør af det totale antal ord
+  pr. dokument
+
 ``` r
 word_counts <- madkatpdf %>%
   unnest_tokens(word, text) %>%
-  anti_join(stop_words) %>%            
-  filter(!str_detect(word, "\\d")) %>% 
+  anti_join(stop_words) %>% 
+  filter(!str_detect(word, "\\d")) %>% #fjerner alle ord med tal
   count(doc, word, sort = TRUE) 
+
+wc_procent <- word_counts %>%
+  group_by(doc) %>%
+  mutate(pct = n / sum(n)) %>%
+  ungroup()
 ```
 
-## DTM og LDA
+## DTM, TF-IDF, Zipf’s lov
+
+[Link til kap. 5 i Tidytextmining](https://www.tidytextmining.com/dtm)
+
+**DTM (document-term matrix**
+
+- Matrix hvor hver række repræsenterer et dokument (f.eks. en bog eller
+  en artikel)
+- hver kolonne repræsenterer et term
+- hver værdi typisk indeholder antalle af gange som det term har optrådt
+  i dokumentet
+
+Når madkat-dtm kører får man en sparsity på 46%. Dette betyder at 46% af
+cellerne har nulværdier. Med to dokumenter betyder det at der er et
+“termoverlap” på: $1-\frac{46}{50}=0.08$
 
 ``` r
 madkat_dtm <- word_counts %>%
   cast_dtm(doc, word, n)
 
+madkat_dtm_viz <- as.matrix(t(madkat_dtm))
+```
+
+**TF-IDF (Term frequency - inverse document frequency**
+
+Istedet for blot at kigge på vigtighed af ord i et dokument som
+termhyppigheden (TF) - hvor ofte et ord optræder i et dokument, kan vi
+tage termernes inverse dokumenthyppighed (IDF) med i ligningen. Dette
+gør at mindre brugte ord får en større stemme. Ved at gange TF og IDF
+sammen opnås et mere balanceret billede.
+
+TF-IDF kan forstås som hyppigheden af et term justeret for hvor ofte det
+optræder.
+
+$$idf(term)=ln\begin{pmatrix}\frac{n_{documents}}{n_{documents\ containing\ term}}\end{pmatrix}$$
+
+``` r
+madkat_tf_idf <- word_counts %>%
+  bind_tf_idf(word, doc, n) %>%
+  arrange(desc(tf_idf))
+```
+
+Vi kan derfor se at ord der er unikke for kun et eller få dokumenter får
+et boost.
+
+**Zipf’s lov**
+
+[kap. 3.2 i
+tidytextmining](https://www.tidytextmining.com/tfidf#zipfs-law)
+
+## topic modelling (beta og LDA)
+
+**LDA (Latent Dirichlet allocation)**
+
+[Link til kap. 6 i
+Tidytextmining](https://www.tidytextmining.com/topicmodeling)
+
+LDA er en metode indefor *topic modelling* som behandler hvert dokument
+som en blanding af emner, og hvert emne som en blanding af ord. Dette
+tillader at dokumenters indhold overlapper istedet for at være sepereret
+i grupper.
+
+F.eks. kan en toemnemodel med emnerne politik og underholdning, have ord
+som kun tilhører de to kategorier repektivt, f.eks. forhandlinger og
+minister til politik og film og skuespiller til underholdning. Der kan
+dog så også være ord som indgår i begge emner som f.eks. København og
+budget. Vi bruger **LDA** til at bestemme hvordan ordende fordeler sig
+indefor emnerne, men også hvilke emner som kendetegner dokumenterne.
+
+Vi bruger Anker Jørgensens taler til dette eksempel
+
+madkat ville se sådan ud:
+
+``` r
 madkat_lda <- LDA(madkat_dtm, k = 2, control = list(seed = 1234))
 madkat_lda
 ```
-
-## topic modelling (beta)
 
 ``` r
 aj_topics <- tidy(aj_lda, matrix = "beta") #Hvilke ord der karakteriserer hvert emne
@@ -174,6 +282,12 @@ beta_wide %>%
     y = NULL # Removes the "term" label from the y-axis for a cleaner look
   ) +
   theme_minimal()
+```
+
+# Sentiment i Python med Sentida
+
+``` python
+import 
 ```
 
 Wordscloud bigrams
