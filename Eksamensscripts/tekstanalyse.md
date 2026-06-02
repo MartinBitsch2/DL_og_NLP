@@ -72,7 +72,7 @@ AJ1 <- tibble(document = paste("Tale", 1:length(AJ)),  text = AJ)
 AJ1[,1] <- df[,"iso_date"]
 ```
 
-## gutenberg
+## gutenberg, Jane Austen, AssociatedPress
 
 ``` r
 library(gutenbergr)
@@ -80,6 +80,20 @@ gutmeta <- gutenberg_metadata
 
 #The Declaration of Independence of the United States of America
 DoI <- gutenberg_download(1)
+```
+
+``` r
+library(janeaustenr)
+ab <- austen_books()
+```
+
+Dette er på DTM-form
+
+``` r
+library(tm)
+
+data("AssociatedPress", package = "topicmodels")
+ap <- AssociatedPress
 ```
 
 ## load PDF’er
@@ -185,7 +199,79 @@ et boost.
 [kap. 3.2 i
 tidytextmining](https://www.tidytextmining.com/tfidf#zipfs-law)
 
-## topic modelling (beta og LDA)
+Zipf’s lov er en relation mellem hyppighed af af ord og rangeringen. Den
+lyder således:
+
+> *“Hyppigheden af et ords optræden er omvendt proportionel med dets
+> rangering”*
+
+Demonstration. Vi bruger Anker Jørgensens taler. Her finder vi først
+termhyppigheden, som er antal gange et ord optræder i et dokument
+divideret med det totalte antal ord i dokumentet.
+
+Herunder er disse hyppigheder grupperet, hvor det kan observeres at der
+i Anker Jørgensens taler er mellem 400 og 500 ord som har den laveste
+hyppighed. Det vil være ord som kun optræder 1 gang i hele talen.
+
+``` r
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+
+book_words <- AJ1 %>%
+  unnest_tokens(word, text) %>%
+  count(document, word, sort = TRUE)
+
+total_words <- book_words %>% 
+  group_by(document) %>% 
+  summarize(total = sum(n))
+
+book_words <- left_join(book_words, total_words)
+
+ggplot(book_words, aes(log(n/total), fill = document)) +
+  geom_histogram(show.legend = FALSE, binwidth = 0.1) +
+  xlim(NA, 0.2) +
+  facet_wrap(~document, ncol = 2, scales = "free_y")
+```
+
+Dette er grundlæggende Zipf’s lov. Men det kommer særligt til udtryk ved
+denne distribution, hvor det kan obeserveres at alle termhyppigheder
+følger hinanden.
+
+``` r
+freq_by_rank <- book_words %>% 
+  group_by(document) %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total) %>%
+  ungroup()
+
+freq_by_rank %>% 
+  ggplot(aes(rank, term_frequency, color = document)) + 
+  geom_line(linewidth = 1.1, alpha = 0.8, show.legend = FALSE) + 
+  scale_x_log10() +
+  scale_y_log10()
+```
+
+<figure>
+<img
+src="https://raw.githubusercontent.com/MartinBitsch2/DL_og_NLP/refs/heads/main/Eksamensscripts/billeder/000002.png"
+alt="Zipf’s lov" />
+<figcaption aria-hidden="true">Zipf’s lov</figcaption>
+</figure>
+
+Hvis vi fitter en lineær funktion til værdierne $100\gt rank\gt 10$ får
+vi en hældning på -1,0774. Afvigelserne i de høje range (ca. 1-5) er dog
+meget normale for mange sprog. Det er her de sjælne ord ligger.
+
+``` r
+rank_subset <- freq_by_rank %>% 
+  filter(rank < 100,
+         rank > 10)
+
+lm(log10(term_frequency) ~ log10(rank), data = rank_subset)
+```
+
+## topic modelling (LDA, beta, gamma)
 
 **LDA (Latent Dirichlet allocation)**
 
@@ -204,20 +290,42 @@ dog så også være ord som indgår i begge emner som f.eks. København og
 budget. Vi bruger **LDA** til at bestemme hvordan ordende fordeler sig
 indefor emnerne, men også hvilke emner som kendetegner dokumenterne.
 
-Vi bruger Anker Jørgensens taler til dette eksempel
+Vi bruger igen Anker Jørgensens taler til dette eksempel. For at køre
+LDA kræves det at dataen er på DTM-form.
 
-madkat ville se sådan ud:
+Processen er derfor:
+
+> DF med dokumentnr i en kolonne og brødtekst i anden kolonne =\> Lave
+> word-count som tæller hvor mange gange hvert ord optræder i hvert
+> dokument =\> lave DTM som danner en matrix ud af word-count =\> LDA
 
 ``` r
-madkat_lda <- LDA(madkat_dtm, k = 2, control = list(seed = 1234))
-madkat_lda
+AJ_word_counts <- AJ1 %>%
+  unnest_tokens(word, text) %>%
+  anti_join(danish_stopwords) %>% 
+  filter(!str_detect(word, "\\d")) %>% #fjerner alle ord med tal
+  count(document, word, sort = TRUE) 
+
+AJ_dtm <- AJ_word_counts %>%
+  cast_dtm(document, word, n)
 ```
+
+k er her antallet af topics
 
 ``` r
-aj_topics <- tidy(aj_lda, matrix = "beta") #Hvilke ord der karakteriserer hvert emne
+AJ_lda <- LDA(AJ_dtm, k = 2, control = list(seed = 1234))
 ```
 
-**TOP 10 ORD I HVER KATEGORI**
+**Beta**
+
+Hvilke ord der karakteriserer hvert emne. For hver kombination beregnes
+sandsynligheden for at det term bliver genereret for det emne.
+
+``` r
+aj_topics <- tidy(AJ_lda, matrix = "beta")
+```
+
+Her kigger vi på top 10 termer i hvert emne
 
 ``` r
 aj_top_terms <- aj_topics %>%
@@ -234,7 +342,14 @@ aj_top_terms %>%
   scale_y_reordered()
 ```
 
-**Visualisering af ord med størst afstand**
+<figure>
+<img
+src="https://raw.githubusercontent.com/MartinBitsch2/DL_og_NLP/refs/heads/main/Eksamensscripts/billeder/000011.png"
+alt="top 10" />
+<figcaption aria-hidden="true">top 10</figcaption>
+</figure>
+
+Vi kan også visualisere de ord som har størst afstand i $\beta$ værdi
 
 ``` r
 beta_wide <- aj_topics %>%
@@ -257,20 +372,34 @@ beta_wide %>%
   theme_minimal()
 ```
 
-## document modelling (gamma)
+Plottet viser at emnerne er meget adskilt, men dette kan være kunstigt,
+fordi det er taler fra den samme person.
+
+**document modelling (gamma)**
+
+Hvilke emner fylder i de forskellige dokumenter.
+
+Værdierne angiver det estimerede forhold af ord fra et dokument som er
+genereret fra et givet emne. F.eks. er dette fordelingen i dette data
+meget skævt. For alle 8 taler vil over 99,99% af ordene tilhøre et af
+emnerne mens de resterende under 0,01% tilhører det andet emne. Derfor
+tilbage til pointen om at emnedelingen er kunstig.
 
 ``` r
-aj_documents <- tidy(aj_lda, matrix = "gamma") #hvilke emner fylder i de forskellige dokumenter
+aj_documents <- tidy(AJ_lda, matrix = "gamma")
+aj_documents
 ```
 
+Her vist som plots
+
 ``` r
-beta_wide <- aj_documents %>%
+gamma_wide <- aj_documents %>%
   mutate(topic = paste0("topic", topic)) %>%
   pivot_wider(names_from = topic, values_from = gamma) %>% 
   filter(topic1 > .001 | topic2 > .001) %>%
   mutate(log_ratio = log2(topic2 / topic1))
 
-beta_wide %>%
+gamma_wide %>%
   group_by(direction = log_ratio > 0) %>%
   slice_max(abs(log_ratio), n = 8) %>%
   ungroup() %>%
@@ -284,10 +413,49 @@ beta_wide %>%
   theme_minimal()
 ```
 
-# Sentiment i Python med Sentida
+[Gamma
+billede](https://raw.githubusercontent.com/MartinBitsch2/DL_og_NLP/refs/heads/main/Eksamensscripts/billeder/002.png)
 
-``` python
-import 
+# Wordclouds + bigrams (n-grams) + igraph
+
+**Bigrams**
+
+Bruges sammen med unnest_tokens til at kigge på sekvenser af ord. F.eks.
+ved at kigge på hvor ofte ord x er efterfulgt af ord y, kan vi bygge en
+model som for forholdet mellem dem.
+
+n sættes som det antal ord i træk man vil kigge på. derfor n-grams.
+**bigrams** er derfor n=2.
+
+``` r
+austen_bigrams <- ab %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>% #bigrams i starten er bare hvad kolonnen kommer til at hedde.
+  filter(!is.na(bigram))
 ```
 
-Wordscloud bigrams
+Vi kan herefter seperere sætningerne til videre analyse. Her bruges
+*seperate*-funktionen til at skille bigrams ad, så hvert ord får sin
+egen kolonne.
+
+I den nye DF fjernes rækker hvor stopord indgår
+
+``` r
+bigrams_separated <- austen_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+# new bigram counts:
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+```
+
+**igraph**
+
+**Wordcloud**
+
+``` r
+ab
+```
