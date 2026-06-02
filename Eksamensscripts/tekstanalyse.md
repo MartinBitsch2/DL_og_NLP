@@ -413,10 +413,14 @@ gamma_wide %>%
   theme_minimal()
 ```
 
-[Gamma
-billede](https://raw.githubusercontent.com/MartinBitsch2/DL_og_NLP/refs/heads/main/Eksamensscripts/billeder/002.png)
+<figure>
+<img
+src="https://raw.githubusercontent.com/MartinBitsch2/DL_og_NLP/refs/heads/main/Eksamensscripts/billeder/002.png"
+alt="Gamma billede" />
+<figcaption aria-hidden="true">Gamma billede</figcaption>
+</figure>
 
-# Wordclouds + bigrams (n-grams) + igraph
+# Wordclouds + bigrams (n-grams) + igraph/ggraph
 
 **Bigrams**
 
@@ -440,6 +444,8 @@ egen kolonne.
 I den nye DF fjernes rækker hvor stopord indgår
 
 ``` r
+library(tidyr)
+
 bigrams_separated <- austen_bigrams %>%
   separate(bigram, c("word1", "word2"), sep = " ")
 
@@ -452,10 +458,54 @@ bigram_counts <- bigrams_filtered %>%
   count(word1, word2, sort = TRUE)
 ```
 
-**igraph**
+**igraph/ggraph**
+
+Her ses de bigrams som optræder mere end 20 gange og deres forhold til
+hinanden.
+
+``` r
+library(igraph)
+library(ggraph)
+
+bigram_graph <- bigram_counts %>%
+  filter(n > 30) %>%
+  graph_from_data_frame()
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+```
+
+<figure>
+<img
+src="https://raw.githubusercontent.com/MartinBitsch2/DL_og_NLP/refs/heads/main/Eksamensscripts/billeder/00001b.png"
+alt="igraph" />
+<figcaption aria-hidden="true">igraph</figcaption>
+</figure>
 
 **Wordcloud**
 
 ``` r
-ab
+library(wordcloud)
+
+AJ1_unnest <- AJ1 %>%
+  unnest_tokens(words, text) %>%
+  anti_join(danish_stopwords, by = c("words" = "word")) %>%
+  filter(!str_detect(words, "\\d"))
+
+AJ1_unnest %>%
+  count(words) %>%
+  with(wordcloud(words, n, max.words = 50))
 ```
+
+<figure>
+<img
+src="https://raw.githubusercontent.com/MartinBitsch2/DL_og_NLP/refs/heads/main/Eksamensscripts/billeder/00001a.png"
+alt="wc" />
+<figcaption aria-hidden="true">wc</figcaption>
+</figure>
