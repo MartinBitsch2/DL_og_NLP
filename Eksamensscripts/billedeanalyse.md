@@ -63,8 +63,10 @@ library(reticulate)
 ```
 
 Indsæt din egen sti. Bare husk at det skal være pythonversionen som
-ligger i det virtuelle miljø “llms-course”.
-Deruover skal Python-interpreter også vælges fra indstillinger i R: tools -> global options -> Python -> select (intepreter) -> conda environments -> llms-course:
+ligger i det virtuelle miljø “llms-course”. Deruover skal
+Python-interpreter også vælges fra indstillinger i R: tools -\> global
+options -\> Python -\> select (intepreter) -\> conda environments -\>
+llms-course.
 
 ``` r
 use_python("C:\\Users\\marti\\anaconda3\\envs\\llms-course\\python.exe", required = TRUE)
@@ -281,16 +283,18 @@ par(mfrow=c(1,1))
 ## Algoritme: Kat vs. hund
 
 ``` r
-library(keras)
+library(reticulate)
+use_python("C:\\Users\\marti\\anaconda3\\envs\\llms-course\\python.exe", required = TRUE)
+
 library(tensorflow)
-library(imager)
+library(keras)
 
 hovedmappe_sti <- "C:\\Users\\marti\\Documents\\Git\\EK\\2. sem\\Deep Learning og NLP\\DL_og_NLP_git\\Eksamensscripts\\billeder\\"
 
 klasse_navne <- c("kat", "hund")
 
 # -------------------------------------------------------------------
-# 1. HENT OG FILTRÉR DATA (Eksamens-magien!)
+# 1. HENT OG FILTRÉR DATA
 # -------------------------------------------------------------------
 cifar <- dataset_cifar10()
 
@@ -355,27 +359,30 @@ plot(history)
 # 4. TEST PÅ ET TILFÆLDIGT BILLEDE FRA TEST-SÆTTET
 # -------------------------------------------------------------------
 # Vælg et tilfældigt billede (fx nummer 42)
-test_index <- 42
+test_index <- 70
 test_billede <- x_test[test_index, , , ]
 sandt_facit <- y_test[test_index] 
 
+billede_til_model <- array_reshape(test_billede, c(1, 32, 32, 3))
+img_test_array <- test_billede #kun for at plot virker. ikke statistisk korrekt!
 
-
-###############
+############### EGET BILLEDE ############3
 test_billede <- "kat" #test med eget billede
 
 img_test <- image_load(paste0(hovedmappe_sti, test_billede, ".jpg"), 
                        target_size = c(32, 32))
-img_test_array <- image_to_array(img_test) / 255
 
-# Gør klar til Keras (batch af 1)
-billede_til_model <- array_reshape(img_test, c(1, 32, 32, 3))
+img_test_array <- image_to_array(img_test) / 255
+billede_til_model <- array_reshape(img_test_array, c(1, 32, 32, 3))
+###############
+
+
 
 # Gæt!
 forudsigelse <- model %>% predict(billede_til_model)
 
 # Vis plot
-par(mfrow=c(1,2))
+par(mfrow = c(1, 2), mar = c(4, 4, 4, 2))
 # as.raster virker perfekt her, fordi x_test er formateret rigtigt!
 plot(as.raster(img_test_array), main = paste("Sandt facit:", klasse_navne[sandt_facit + 1]))
 
@@ -394,8 +401,7 @@ par(mfrow=c(1,1))
 # Pixeludvælgelse
 
 Her kan vi vælge et billede og lave pixelanalyse samt lave clustering på
-gråtoneversionen af billedet (gøre RGB til en værsdi og derefter
-clustre)
+gråtoneversionen af billedet (gøre RGB til en værdi og derefter clustre)
 
 ``` r
 library(imager)
@@ -416,28 +422,28 @@ billeder_fra_folder <- list.files(paste0(hovedmappe_sti, "ikke-ur"),
 
 ``` r
 print(billeder_fra_folder)
-nr <- 3
+nr <- 10
 ```
 
 **Billedet**
 
 ``` r
 billede <- load.image(billeder_fra_folder[nr])
-billede1 <- matrix(billede[,,1,2], nrow=nrow(billede), ncol=ncol(billede))
 
 dim(billede)
 plot(billede)
 ```
 
-**Loop** Udregn gråtoner for hele billedet på én gang. Billedet bliver
-derefter fladet ud til en vektor, som kmeans kræver i næste step.
+**Loop**
+
+Udregn gråtoner for hele billedet på én gang. Billedet bliver derefter
+fladet ud til en vektor, som kmeans kræver i næste step.
 
 ``` r
-# Jeg går ud fra, at ,1 ,2 og ,3 er RGB-kanalerne
 grayscale_matrix <- (billede[,,1,1]*255 + 
                          billede[,,1,2]*255 + 
                          billede[,,1,3]*255) / 3
-  
+
 pixel_vektor <- as.vector(grayscale_matrix)
 ```
 
